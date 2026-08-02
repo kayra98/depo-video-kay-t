@@ -261,30 +261,33 @@ public class RecordingService {
             throw new RuntimeException("Cannot create output directory: " + outputPath, e);
         }
 
+        recording.set(true);
+        recordingStartTime.set(System.currentTimeMillis());
+
+        // Read config outside thread
+        StorageConfig recConfig = storageConfigRepo.findByStorageType("RECORDING")
+                .orElse(null);
+        int width = recConfig != null && recConfig.getVideoWidth() != null
+                ? recConfig.getVideoWidth() : 640;
+        int height = recConfig != null && recConfig.getVideoHeight() != null
+                ? recConfig.getVideoHeight() : 480;
+        int fps = recConfig != null && recConfig.getVideoFps() != null
+                ? recConfig.getVideoFps() : 30;
+        int bitrate = recConfig != null && recConfig.getVideoBitrate() != null
+                ? recConfig.getVideoBitrate() : 5_000_000;
+
         recordingThread = new Thread(() -> {
             try {
                 // Open camera
                 String camPath = getEffectiveCameraPath();
                 grabber = new FFmpegFrameGrabber(camPath);
-                // Read recording quality config from DB (or use defaults)
-                StorageConfig recConfig = storageConfigRepo.findByStorageType("RECORDING")
-                        .orElse(null);
-                int width = recConfig != null && recConfig.getVideoWidth() != null
-                        ? recConfig.getVideoWidth() : 1280;
-                int height = recConfig != null && recConfig.getVideoHeight() != null
-                        ? recConfig.getVideoHeight() : 720;
-                int fps = recConfig != null && recConfig.getVideoFps() != null
-                        ? recConfig.getVideoFps() : 30;
-                int bitrate = recConfig != null && recConfig.getVideoBitrate() != null
-                        ? recConfig.getVideoBitrate() : 5_000_000;
-
                 grabber.setFormat("video4linux2");
                 grabber.setImageWidth(width);
                 grabber.setImageHeight(height);
                 grabber.setFrameRate(fps);
                 grabber.start();
 
-                // Setup recorder
+                // Setup recorder with actual grabbed resolution
                 recorder = new FFmpegFrameRecorder(outputPath,
                         grabber.getImageWidth(), grabber.getImageHeight());
                 recorder.setVideoCodec(org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_ID_H264);
@@ -295,9 +298,8 @@ public class RecordingService {
                 recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
                 recorder.start();
 
-                recording.set(true);
-                recordingStartTime.set(System.currentTimeMillis());
-                log.info("Recording started: order={}, output={}", orderNo, outputPath);
+                log.info("Recording started: order={}, output={}, res={}x{}",
+                        orderNo, outputPath, grabber.getImageWidth(), grabber.getImageHeight());
 
                 // Capture loop
                 Frame frame;
@@ -306,6 +308,7 @@ public class RecordingService {
                 }
             } catch (Exception e) {
                 log.error("Recording error", e);
+                recording.set(false);
             } finally {
                 cleanup();
             }
