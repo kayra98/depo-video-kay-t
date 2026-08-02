@@ -5,6 +5,8 @@ E-ticaret kargo paketleri icin video kayit sistemi. Barkod okut, USB kameradan k
 ## Kurulum
 
 ```bash
+cd ../var/vk
+git clone https://github.com/kayra98/depo-video-kay-t
 chmod +x setup.sh
 ./setup.sh
 ```
