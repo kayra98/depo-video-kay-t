@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' — VK'">Record — VK</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body class="record-page">
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-title">VK Video Recording</span>
+        </div>
+        <div class="nav-user">
+            <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+            <form th:action="@{/logout}" method="post" class="nav-logout-form">
+                <button type="submit" class="btn btn-outline btn-sm">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="record-layout">
+        <div class="record-panel">
+            <h2>Record Video</h2>
+
+            <!-- Barcode -->
+            <div class="barcode-section">
+                <div class="form-group">
+                    <label for="orderNo">Order / Barcode No</label>
+                    <div class="barcode-row">
+                        <input type="text" id="orderNo" class="form-input"
+                               placeholder="Scan or type barcode..."
+                               autocomplete="off">
+                        <button type="button" id="scanBtn" class="btn btn-outline">Scan</button>
+                    </div>
+                </div>
+                <div id="scannerContainer" class="scanner-hidden">
+                    <div id="qrReader"></div>
+                    <button type="button" id="stopScanBtn" class="btn btn-outline btn-sm">Close Scanner</button>
+                </div>
+            </div>
+
+            <!-- Recording Controls -->
+            <div class="recording-controls">
+                <button type="button" id="photoBtn" class="btn btn-photo">
+                    Take Photo
+                </button>
+                <button type="button" id="startBtn" class="btn btn-record">
+                    Start Recording
+                </button>
+                <button type="button" id="stopBtn" class="btn btn-stop" disabled>
+                    Stop Recording
+                </button>
+            </div>
+
+            <!-- Recording Status -->
+            <div id="recordingStatus" class="recording-status">
+                <span id="recIndicator" class="rec-indicator-hidden"></span>
+                <span id="recTimer">00:00</span>
+                <span id="recSize"></span>
+            </div>
+
+            <!-- Photo Preview -->
+            <div id="photoPreviewArea" class="photo-preview-hidden">
+                <img id="photoPreviewImg" src="" alt="Captured photo">
+                <button type="button" id="dismissPhotoBtn" class="btn btn-outline btn-sm">Dismiss</button>
+            </div>
+
+            <!-- Status Messages -->
+            <div id="statusMessage" class="status-hidden"></div>
+        </div>
+
+    </main>
+
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+    <script th:inline="javascript">
+        const orderNoInput = document.getElementById('orderNo');
+        const scanBtn = document.getElementById('scanBtn');
+        const scannerContainer = document.getElementById('scannerContainer');
+        const stopScanBtn = document.getElementById('stopScanBtn');
+        const photoBtn = document.getElementById('photoBtn');
+        const photoPreviewArea = document.getElementById('photoPreviewArea');
+        const photoPreviewImg = document.getElementById('photoPreviewImg');
+        const dismissPhotoBtn = document.getElementById('dismissPhotoBtn');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const recIndicator = document.getElementById('recIndicator');
+        const recTimer = document.getElementById('recTimer');
+        const recSize = document.getElementById('recSize');
+        const statusMessage = document.getElementById('statusMessage');
+
+        let timerInterval = null;
+        let recordingStart = null;
+        let html5QrCode = null;
+
+        /* Barcode scanner */
+        scanBtn.addEventListener('click', () => {
+            scannerContainer.classList.remove('scanner-hidden');
+            scannerContainer.classList.add('scanner-visible');
+            try {
+                html5QrCode = new Html5Qrcode("qrReader");
+                html5QrCode.start(
+                    { facingMode: 'environment' },
+                    { fps: 10, qrbox: { width: 250, height: 100 } },
+                    (decodedText) => { orderNoInput.value = decodedText; stopScanner(); },
+                    () => {}
+                ).catch(err => {
+                    stopScanner();
+                    showStatus('Camera not available — type manually (mobile needs HTTPS)', 'error');
+                    orderNoInput.focus();
+                });
+            } catch (e) {
+                stopScanner();
+                showStatus('Scanner not supported — type manually', 'error');
+                orderNoInput.focus();
+            }
+        });
+
+        stopScanBtn.addEventListener('click', stopScanner);
+
+        function stopScanner() {
+            scannerContainer.classList.remove('scanner-visible');
+            scannerContainer.classList.add('scanner-hidden');
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {}).catch(() => {});;
+                html5QrCode = null;
+            }
+        }
+
+        /* Take Photo */
+        photoBtn.addEventListener('click', async () => {
+            const orderNo = orderNoInput.value.trim();
+            if (!orderNo) {
+                showStatus('Please enter or scan a barcode/order number first.', 'error');
+                return;
+            }
+            photoBtn.disabled = true;
+            try {
+                const resp = await fetch('/api/record/photo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'orderNo=' + encodeURIComponent(orderNo)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showStatus('Photo captured! ' + formatSize(data.fileSize), 'success');
+                    // Show preview
+                    photoPreviewImg.src = '/api/record/file/' + data.id;
+                    photoPreviewArea.classList.remove('photo-preview-hidden');
+                    photoPreviewArea.classList.add('photo-preview-visible');
+                } else {
+                    showStatus(data.error || 'Failed', 'error');
+                }
+            } catch (err) {
+                showStatus('Error: ' + err.message, 'error');
+            } finally {
+                photoBtn.disabled = false;
+            }
+        });
+
+        dismissPhotoBtn.addEventListener('click', () => {
+            photoPreviewImg.src = '';
+            photoPreviewArea.classList.remove('photo-preview-visible');
+            photoPreviewArea.classList.add('photo-preview-hidden');
+        });
+
+        /* Start recording */
+        startBtn.addEventListener('click', async () => {
+            const orderNo = orderNoInput.value.trim();
+            if (!orderNo) {
+                showStatus('Please enter or scan a barcode/order number first.', 'error');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/record/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'orderNo=' + encodeURIComponent(orderNo)
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    recordingStart = Date.now();
+                    timerInterval = setInterval(updateTimer, 200);
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    orderNoInput.disabled = true;
+                    recIndicator.className = 'rec-indicator-active';
+                    showStatus('Recording started...', 'success');
+                } else {
+                    showStatus(data.error || 'Failed to start', 'error');
+                }
+            } catch (err) {
+                showStatus('Error: ' + err.message, 'error');
+            }
+        });
+
+        /* Stop recording */
+        stopBtn.addEventListener('click', async () => {
+            try {
+                const resp = await fetch('/api/record/stop', { method: 'POST' });
+                const data = await resp.json();
+                clearInterval(timerInterval);
+                stopBtn.disabled = true;
+                recIndicator.className = 'rec-indicator-hidden';
+                recTimer.textContent = '00:00';
+                recSize.textContent = '';
+                orderNoInput.disabled = false;
+                startBtn.disabled = false;
+
+                if (data.success) {
+                    showStatus('Saved! ' + data.fileName + ' (' + formatSize(data.fileSize) + ')', 'success');
+                    orderNoInput.value = '';
+                } else {
+                    showStatus(data.error || 'Failed to stop', 'error');
+                }
+            } catch (err) {
+                showStatus('Error: ' + err.message, 'error');
+                clearInterval(timerInterval);
+                stopBtn.disabled = true;
+                startBtn.disabled = false;
+                recIndicator.className = 'rec-indicator-hidden';
+                orderNoInput.disabled = false;
+            }
+        });
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - recordingStart) / 1000);
+            const mins = String(Math.floor(elapsed / 60)).padStart(2, '0');
+            const secs = String(elapsed % 60).padStart(2, '0');
+            recTimer.textContent = mins + ':' + secs;
+        }
+
+        function showStatus(msg, type) {
+            statusMessage.textContent = msg;
+            statusMessage.className = 'status-' + type;
+        }
+
+        function formatSize(bytes) {
+            if (!bytes) return '0 B';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        /* Check if already recording on page load */
+        fetch('/api/record/status')
+            .then(r => r.json())
+            .then(s => {
+                if (s.recording) {
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    orderNoInput.disabled = true;
+                    recIndicator.className = 'rec-indicator-active';
+                    showStatus('Recording in progress...', 'success');
+                }
+            }).catch(() => {});
+    </script>
+</body>
+</html>

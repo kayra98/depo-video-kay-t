@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login — VK Video Recording</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>VK</h1>
+                <p>Video Recording System</p>
+            </div>
+
+            <div class="auth-body">
+                <!-- Messages -->
+                <div th:if="${param.setupComplete}" class="alert alert-success">
+                    Setup complete! Please log in with your email and authenticator code.
+                </div>
+                <div th:if="${param.error}" class="alert alert-error">
+                    Invalid email or TOTP code. Please try again.
+                </div>
+                <div th:if="${param.logout}" class="alert alert-info">
+                    You have been logged out.
+                </div>
+
+                <form th:action="@{/login}" method="post" class="auth-form">
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email"
+                               id="email"
+                               name="email"
+                               class="form-input"
+                               required
+                               placeholder="your@email.com"
+                               autocomplete="email"
+                               autofocus>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="totpCode">Authenticator Code</label>
+                        <input type="text"
+                               id="totpCode"
+                               name="totpCode"
+                               class="form-input code-input"
+                               required
+                               placeholder="6-digit code"
+                               pattern="[0-9]{6}"
+                               maxlength="6"
+                               inputmode="numeric"
+                               autocomplete="one-time-code">
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-full">
+                        Log In
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

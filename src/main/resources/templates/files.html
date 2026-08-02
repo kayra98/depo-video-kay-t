@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' — VK'">Files — VK</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body class="files-page">
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-title">VK Video Recording</span>
+        </div>
+        <div class="nav-user">
+            <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+            <a href="/record" class="btn btn-outline btn-sm">Record</a>
+            <form th:action="@{/logout}" method="post" class="nav-logout-form">
+                <button type="submit" class="btn btn-outline btn-sm">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="files-container">
+        <h2>File Manager</h2>
+
+        <!-- Search -->
+        <div class="files-search">
+            <input type="text" id="searchInput" class="form-input"
+                   placeholder="Search by order number..." autocomplete="off">
+            <button id="searchBtn" class="btn btn-primary">Search</button>
+        </div>
+
+        <!-- File count -->
+        <div class="files-info">
+            <span id="totalCount">0 files</span>
+        </div>
+
+        <!-- Table -->
+        <div class="files-table-wrapper">
+            <table class="files-table">
+                <thead>
+                    <tr>
+                        <th>Order No</th>
+                        <th>File Name</th>
+                        <th>Type</th>
+                        <th>Size</th>
+                        <th>Duration</th>
+                        <th>S3</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="filesBody">
+                    <tr><td colspan="8" class="files-empty">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="files-pagination" id="pagination"></div>
+    </main>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="modal-hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <button id="closeModal" class="modal-close">&times;</button>
+            <img id="previewImage" src="" alt="Preview" style="display:none;max-width:100%;max-height:70vh;">
+            <video id="previewVideo" controls style="display:none;max-width:100%;max-height:70vh;">
+                <source src="" type="video/mp4">
+            </video>
+        </div>
+    </div>
+
+    <script>
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const filesBody = document.getElementById('filesBody');
+        const totalCount = document.getElementById('totalCount');
+        const pagination = document.getElementById('pagination');
+        const previewModal = document.getElementById('previewModal');
+        const previewImage = document.getElementById('previewImage');
+        const previewVideo = document.getElementById('previewVideo');
+        const closeModal = document.getElementById('closeModal');
+
+        let currentPage = 0;
+        let currentSearch = '';
+
+        searchBtn.addEventListener('click', () => { currentSearch = searchInput.value.trim(); currentPage = 0; loadFiles(); });
+        searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchBtn.click(); });
+        closeModal.addEventListener('click', () => { previewModal.className = 'modal-hidden'; previewImage.style.display = 'none'; previewVideo.style.display = 'none'; previewVideo.querySelector('source').src = ''; });
+
+        async function loadFiles() {
+            filesBody.innerHTML = '<tr><td colspan="8" class="files-empty">Loading...</td></tr>';
+            const resp = await fetch(`/api/files?page=${currentPage}&search=${encodeURIComponent(currentSearch)}`);
+            const data = await resp.json();
+            totalCount.textContent = data.totalElements + ' files';
+            renderTable(data.content);
+            renderPagination(data.currentPage, data.totalPages);
+        }
+
+        function renderTable(files) {
+            if (!files || files.length === 0) {
+                filesBody.innerHTML = '<tr><td colspan="8" class="files-empty">No files found</td></tr>';
+                return;
+            }
+            filesBody.innerHTML = files.map(f => {
+                const isPhoto = f.fileName.endsWith('.jpg');
+                const typeIcon = isPhoto ? 'PHOTO' : 'VIDEO';
+                const size = formatSize(f.fileSize);
+                const dur = f.durationSec ? f.durationSec + 's' : '-';
+                const s3 = f.s3Uploaded ? 'Yes' : 'No';
+                const date = f.createdAt ? new Date(f.createdAt).toLocaleString('tr-TR') : '-';
+                return `<tr>
+                    <td>${esc(f.orderNo)}</td>
+                    <td class="files-name" title="${esc(f.fileName)}">${esc(truncate(f.fileName, 30))}</td>
+                    <td><span class="badge badge-${isPhoto ? 'photo' : 'video'}">${typeIcon}</span></td>
+                    <td>${size}</td>
+                    <td>${dur}</td>
+                    <td>${s3}</td>
+                    <td>${date}</td>
+                    <td class="files-actions">
+                        <button class="btn btn-outline btn-sm" onclick="previewFile(${f.id}, '${isPhoto}')">View</button>
+                        ${f.s3Uploaded
+                            ? `<button class="btn btn-outline btn-sm" onclick="shareFile(${f.id})">Share</button>`
+                            : `<button class="btn btn-outline btn-sm" onclick="syncFile(${f.id})" id="syncBtn${f.id}">Sync S3</button>`}
+                        <button class="btn btn-outline btn-sm btn-danger" onclick="deleteFile(${f.id})">Delete</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function renderPagination(page, total) {
+            if (total <= 1) { pagination.innerHTML = ''; return; }
+            let html = '';
+            for (let i = 0; i < total; i++) {
+                html += `<button class="btn btn-sm ${i === page ? 'btn-primary' : 'btn-outline'}"
+                    onclick="currentPage=${i};loadFiles()">${i+1}</button>`;
+            }
+            pagination.innerHTML = html;
+        }
+
+        function previewFile(id, isPhoto) {
+            const url = '/api/record/file/' + id;
+            if (isPhoto === 'true') {
+                previewImage.src = url;
+                previewImage.style.display = 'block';
+                previewVideo.style.display = 'none';
+            } else {
+                previewVideo.querySelector('source').src = url;
+                previewVideo.style.display = 'block';
+                previewVideo.load();
+                previewImage.style.display = 'none';
+            }
+            previewModal.className = 'modal-visible';
+        }
+
+        async function shareFile(id) {
+            try {
+                const resp = await fetch('/api/record/' + id + '/share', { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    await navigator.clipboard.writeText(data.url);
+                    alert('Share link copied! Valid for 7 days.');
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (err) {
+                alert('Failed: ' + err.message);
+            }
+        }
+
+        async function syncFile(id) {
+            const btn = document.getElementById('syncBtn' + id);
+            if (btn) { btn.textContent = 'Syncing...'; btn.disabled = true; }
+            try {
+                const resp = await fetch('/api/record/' + id + '/sync-to-s3', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'syncing') {
+                    pollSyncStatus(id, btn);
+                } else {
+                    alert('Sync result: ' + data.status);
+                    loadFiles();
+                }
+            } catch (err) {
+                alert('Failed: ' + err.message);
+                if (btn) { btn.textContent = 'Sync S3'; btn.disabled = false; }
+            }
+        }
+
+        function pollSyncStatus(id, btn) {
+            const interval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/record/' + id + '/sync-status');
+                    const data = await resp.json();
+                    if (data.status === 'done') {
+                        clearInterval(interval);
+                        if (btn) { btn.textContent = 'Done!'; }
+                        setTimeout(() => loadFiles(), 1000);
+                    } else if (data.status === 'error') {
+                        clearInterval(interval);
+                        if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
+                        alert('S3 sync failed');
+                    } else {
+                        if (btn) btn.textContent = 'Syncing...';
+                    }
+                } catch (e) { clearInterval(interval); }
+            }, 1000);
+        }
+
+        async function deleteFile(id) {
+            if (!confirm('Delete this file?')) return;
+            await fetch('/api/record/' + id, { method: 'DELETE' });
+            loadFiles();
+        }
+
+        function formatSize(b) {
+            if (!b) return '0 B';
+            if (b < 1024) return b + ' B';
+            if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+            return (b/1048576).toFixed(1) + ' MB';
+        }
+        function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function truncate(s, n) { return s.length > n ? s.substring(0, n) + '...' : s; }
+
+        loadFiles();
+    </script>
+</body>
+</html>

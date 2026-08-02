@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${pageTitle} + ' — VK'">Settings — VK</title>
+    <link rel="stylesheet" th:href="@{/css/style.css}">
+</head>
+<body class="settings-page">
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="nav-title">VK Video Recording</span>
+        </div>
+        <div class="nav-user">
+            <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+            <a href="/record" class="btn btn-outline btn-sm">Record</a>
+            <form th:action="@{/logout}" method="post" class="nav-logout-form">
+                <button type="submit" class="btn btn-outline btn-sm">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <main class="settings-container">
+        <h2>Storage Settings</h2>
+
+        <div th:if="${saved}" class="alert alert-success">Settings saved successfully.</div>
+
+        <form th:action="@{/settings/storage}" method="post" class="settings-form">
+            <!-- Camera Selection -->
+            <div class="settings-card">
+                <h3>Camera</h3>
+                <div class="form-group">
+                    <label for="cameraSelect">Server Camera Device</label>
+                    <select id="cameraSelect" class="form-input" onchange="selectCamera(this.value)">
+                        <option value="">Loading cameras...</option>
+                    </select>
+                    <span id="cameraStatus" style="font-size:0.85rem;color:var(--color-text-muted);margin-top:0.25rem;"></span>
+                    <span id="resolutionHint" style="font-size:0.85rem;color:var(--color-primary);font-weight:600;margin-top:0.25rem;display:none;"></span>
+                </div>
+            </div>
+
+            <!-- Recording Quality -->
+            <div class="settings-card">
+                <h3>Recording Quality <span id="recResolutionHint" style="font-size:0.85rem;color:var(--color-primary);font-weight:600;"></span></h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoWidth">Width</label>
+                        <input type="number" id="videoWidth" name="videoWidth" class="form-input"
+                               th:value="${recConfig?.videoWidth ?: 1280}" min="320" max="3840">
+                    </div>
+                    <div class="form-group">
+                        <label for="videoHeight">Height</label>
+                        <input type="number" id="videoHeight" name="videoHeight" class="form-input"
+                               th:value="${recConfig?.videoHeight ?: 720}" min="240" max="2160">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="videoFps">Frame Rate (FPS)</label>
+                        <select id="videoFps" name="videoFps" class="form-input">
+                            <option value="10" th:selected="${recConfig?.videoFps == 10}">10 fps</option>
+                            <option value="15" th:selected="${recConfig?.videoFps == 15}">15 fps</option>
+                            <option value="20" th:selected="${recConfig?.videoFps == 20 || recConfig == null}">20 fps</option>
+                            <option value="25" th:selected="${recConfig?.videoFps == 25}">25 fps</option>
+                            <option value="30" th:selected="${recConfig?.videoFps == 30}">30 fps</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="videoBitrate">Bitrate (Mbps)</label>
+                        <select id="videoBitrate" name="videoBitrate" class="form-input">
+                            <option value="2000000" th:selected="${recConfig?.videoBitrate == 2000000}">2 Mbps</option>
+                            <option value="3000000" th:selected="${recConfig?.videoBitrate == 3000000}">3 Mbps</option>
+                            <option value="5000000" th:selected="${recConfig?.videoBitrate == 5000000 || recConfig == null}">5 Mbps</option>
+                            <option value="8000000" th:selected="${recConfig?.videoBitrate == 8000000}">8 Mbps</option>
+                            <option value="10000000" th:selected="${recConfig?.videoBitrate == 10000000}">10 Mbps</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Local Storage -->
+            <div class="settings-card">
+                <h3>Local Storage</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="localEnabled">Enable Local Storage</label>
+                        <input type="checkbox" id="localEnabled" name="localEnabled"
+                               th:checked="${localConfig.enabled}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="localPath">Storage Path</label>
+                    <input type="text" id="localPath" name="localPath" class="form-input"
+                           th:value="${localConfig.localPath}" placeholder="./recordings">
+                </div>
+                <div class="form-group">
+                    <label for="localMaxPercent">Max Disk Usage (%)</label>
+                    <input type="number" id="localMaxPercent" name="localMaxPercent"
+                           class="form-input" min="10" max="95"
+                           th:value="${localConfig.localMaxPercent}">
+                </div>
+            </div>
+
+            <!-- S3 / Bunny Storage -->
+            <div class="settings-card">
+                <h3>S3 Storage</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="s3Enabled">Enable S3 Upload</label>
+                        <input type="checkbox" id="s3Enabled" name="s3Enabled"
+                               th:checked="${s3Config.enabled}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="s3Endpoint">S3 Endpoint URL</label>
+                    <input type="text" id="s3Endpoint" name="s3Endpoint" class="form-input"
+                           th:value="${s3Config.s3Endpoint}"
+                           placeholder="https://de-s3.storage.bunnycdn.com">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="s3Region">Region</label>
+                        <select id="s3Region" name="s3Region" class="form-input">
+                            <option value="de" th:selected="${s3Config.s3Region == 'de'}">de (Germany)</option>
+                            <option value="ny" th:selected="${s3Config.s3Region == 'ny'}">ny (New York)</option>
+                            <option value="sg" th:selected="${s3Config.s3Region == 'sg'}">sg (Singapore)</option>
+                            <option value="uk" th:selected="${s3Config.s3Region == 'uk'}">uk (London)</option>
+                            <option value="se" th:selected="${s3Config.s3Region == 'se'}">se (Stockholm)</option>
+                            <option value="la" th:selected="${s3Config.s3Region == 'la'}">la (Los Angeles)</option>
+                            <option value="jh" th:selected="${s3Config.s3Region == 'jh'}">jh (Johannesburg)</option>
+                            <option value="syd" th:selected="${s3Config.s3Region == 'syd'}">syd (Sydney)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="s3Bucket">Storage Zone Name</label>
+                        <input type="text" id="s3Bucket" name="s3Bucket" class="form-input"
+                               th:value="${s3Config.s3Bucket}" placeholder="my-storage-zone">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="s3AccessKey">Access Key ID</label>
+                        <input type="password" id="s3AccessKey" name="s3AccessKey" class="form-input"
+                               th:value="${s3Config.s3AccessKey}" placeholder="Access key">
+                    </div>
+                    <div class="form-group">
+                        <label for="s3SecretKey">Secret Access Key</label>
+                        <input type="password" id="s3SecretKey" name="s3SecretKey" class="form-input"
+                               th:value="${s3Config.s3SecretKey}" placeholder="Secret key">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="s3PublicUrl">Public CDN URL (for share links)</label>
+                    <input type="text" id="s3PublicUrl" name="s3PublicUrl" class="form-input"
+                           th:value="${s3Config.s3PublicUrl}"
+                           placeholder="https://myzone.b-cdn.net">
+                    <span style="font-size:0.8rem;color:var(--color-text-muted);">
+                        Pull Zone URL — share links use: URL/filename
+                    </span>
+                </div>
+                <div class="form-group">
+                    <label for="s3RetentionDays">Retention (days)</label>
+                    <input type="number" id="s3RetentionDays" name="s3RetentionDays"
+                           class="form-input" min="1" max="365"
+                           th:value="${s3Config.s3RetentionDays}">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+        </form>
+    </main>
+
+    <script>
+        async function loadCameras() {
+            try {
+                const resp = await fetch('/api/cameras');
+                const cameras = await resp.json();
+                const select = document.getElementById('cameraSelect');
+                select.innerHTML = '';
+                cameras.forEach(cam => {
+                    const opt = document.createElement('option');
+                    opt.value = cam.path;
+                    opt.dataset.resolution = cam.resolution || '';
+                    opt.textContent = (cam.resolution ? '[' + cam.resolution + '] ' : '') + cam.name;
+                    if (cam.selected) {
+                        opt.selected = true;
+                        updateResolutionHint(cam.resolution);
+                    }
+                    select.appendChild(opt);
+                });
+                if (cameras.length === 0) {
+                    select.innerHTML = '<option value="">No cameras found</option>';
+                }
+                document.getElementById('cameraStatus').textContent =
+                    cameras.length + ' camera(s) found';
+            } catch (err) {
+                document.getElementById('cameraStatus').textContent = 'Failed to load cameras';
+            }
+        }
+
+        async function selectCamera(device) {
+            try {
+                await fetch('/api/cameras', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: 'device=' + encodeURIComponent(device)
+                });
+                const sel = document.getElementById('cameraSelect');
+                const opt = sel.options[sel.selectedIndex];
+                const res = opt ? opt.dataset.resolution : '';
+                updateResolutionHint(res);
+                document.getElementById('cameraStatus').textContent = 'Selected: ' + device;
+            } catch (err) {
+                console.error('Failed to select camera', err);
+            }
+        }
+
+        function updateResolutionHint(resolution) {
+            const hint = document.getElementById('resolutionHint');
+            const recHint = document.getElementById('recResolutionHint');
+            if (resolution) {
+                hint.textContent = 'Max supported: ' + resolution;
+                hint.style.display = '';
+                recHint.textContent = '(kameraniz max ' + resolution + ' destekler)';
+            } else {
+                hint.style.display = 'none';
+                recHint.textContent = '';
+            }
+        }
+
+        loadCameras();
+
+        loadCameras();
+    </script>
+</body>
+</html>
