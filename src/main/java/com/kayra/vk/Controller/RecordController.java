@@ -82,6 +82,11 @@ public class RecordController {
             ));
         }
         try {
+            // Get orderNo and elapsed BEFORE stopping (stopRecording clears them)
+            RecordingService.RecordingStatus status = recordingService.getStatus();
+            String orderNo = status.orderNo();
+            int elapsedSec = (int) status.elapsedSec();
+
             String filePath = recordingService.stopRecording();
             File videoFile = new File(filePath);
             if (!videoFile.exists()) {
@@ -90,18 +95,13 @@ public class RecordController {
                         "error", "Recording file not found"
                 ));
             }
-            // Get recording info
-            RecordingService.RecordingStatus status = recordingService.getStatus();
 
             // Save via VideoService
             byte[] videoBytes = Files.readAllBytes(videoFile.toPath());
             String fileName = videoFile.getName();
-            String orderNo = status.orderNo();
 
-            // Create multipart-like save
             RecordList record = videoService.saveRecordingFromFile(
-                    videoBytes, fileName, orderNo,
-                    (int) status.elapsedSec(), auth.getName());
+                    videoBytes, fileName, orderNo, elapsedSec, auth.getName());
 
             return ResponseEntity.ok(Map.of(
                     "success", true,
