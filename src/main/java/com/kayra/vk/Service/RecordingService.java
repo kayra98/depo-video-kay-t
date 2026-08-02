@@ -230,7 +230,6 @@ public class RecordingService {
             throw new RuntimeException("Cannot create output directory: " + outputPath, e);
         }
 
-        recording.set(true);
         recorderReady.set(false);
         recordingStartTime.set(System.currentTimeMillis());
 
@@ -245,6 +244,9 @@ public class RecordingService {
                 ? recConfig.getVideoFps() : 30;
         int bitrate = recConfig != null && recConfig.getVideoBitrate() != null
                 ? recConfig.getVideoBitrate() : 5_000_000;
+
+        final java.util.concurrent.CountDownLatch cameraReady = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.atomic.AtomicReference<String> threadError = new java.util.concurrent.atomic.AtomicReference<>();
 
         recordingThread = new Thread(() -> {
             try {
@@ -268,6 +270,8 @@ public class RecordingService {
                 recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
                 recorder.start();
                 recorderReady.set(true);
+                recording.set(true);
+                cameraReady.countDown();
 
                 log.info("Recording started: order={}, output={}, res={}x{}",
                         orderNo, outputPath, grabber.getImageWidth(), grabber.getImageHeight());
@@ -279,13 +283,34 @@ public class RecordingService {
                 }
             } catch (Exception e) {
                 log.error("Recording error", e);
+                threadError.set(e.getMessage());
                 recording.set(false);
+                cameraReady.countDown();
             } finally {
                 cleanup();
             }
         }, "recording-" + orderNo);
 
         recordingThread.start();
+
+        // Wait up to 10 seconds for camera + recorder to be ready
+        try {
+            if (!cameraReady.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                recording.set(false);
+                recordingThread.interrupt();
+                throw new RuntimeException("Camera initialization timed out after 10 seconds");
+            }
+        } catch (InterruptedException e) {
+            recording.set(false);
+            recordingThread.interrupt();
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while waiting for camera");
+        }
+
+        if (!recording.get()) {
+            String err = threadError.get();
+            throw new RuntimeException(err != null ? err : "Camera failed to start");
+        }
     }
 
     /**
