@@ -319,7 +319,7 @@ public class RecordingService {
      */
     public synchronized String stopRecording() {
         if (!recording.get()) {
-            throw new IllegalStateException("Not recording");
+            throw new IllegalStateException("No active recording. The recording may have already stopped or the server was restarted.");
         }
         recording.set(false);
         recordingStartTime.set(0);
