@@ -119,37 +119,10 @@ public class RecordingService {
                 resolutionCache.put(devicePath, maxRes);
             }
 
-            if (!canActuallyCapture(devicePath)) {
-                log.info("Device {} lists formats but cannot capture frames - excluding", devicePath);
-                return false;
-            }
-
             log.info("Video capture device found: {}", devicePath);
             return true;
         } catch (Exception e) {
             log.debug("Device {} not a capture device: {}", devicePath, e.getMessage());
-            return false;
-        }
-    }
-
-    private boolean canActuallyCapture(String devicePath) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "timeout", "10", "ffmpeg", "-f", "video4linux2",
-                    "-i", devicePath, "-frames:v", "1", "-f", "null", "/dev/null"
-            );
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            boolean finished = p.waitFor(12, TimeUnit.SECONDS);
-            if (!finished) {
-                p.destroyForcibly();
-                forceReleaseCamera(devicePath);
-                return false;
-            }
-            p.destroyForcibly();
-            forceReleaseCamera(devicePath);
-            return p.exitValue() == 0;
-        } catch (Exception e) {
             return false;
         }
     }
