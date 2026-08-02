@@ -68,7 +68,8 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             .csrf(csrf -> csrf
-                .ignoringRequestMatchers("/api/record/upload", "/api/record/photo")
+                .ignoringRequestMatchers("/api/record/upload", "/api/record/photo",
+                        "/api/record/start", "/api/record/stop")
             )
             .formLogin(form -> form
                 .loginPage("/login")
