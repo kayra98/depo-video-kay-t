@@ -42,6 +42,7 @@ public class RecordingService {
     }
 
     private final AtomicBoolean recording = new AtomicBoolean(false);
+    private final AtomicBoolean recorderReady = new AtomicBoolean(false);
     private final AtomicLong recordingStartTime = new AtomicLong(0);
 
     private volatile Thread recordingThread;
@@ -230,6 +231,7 @@ public class RecordingService {
         }
 
         recording.set(true);
+        recorderReady.set(false);
         recordingStartTime.set(System.currentTimeMillis());
 
         // Read config outside thread
@@ -265,6 +267,7 @@ public class RecordingService {
                 recorder.setVideoQuality(0);
                 recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
                 recorder.start();
+                recorderReady.set(true);
 
                 log.info("Recording started: order={}, output={}, res={}x{}",
                         orderNo, outputPath, grabber.getImageWidth(), grabber.getImageHeight());
@@ -290,9 +293,17 @@ public class RecordingService {
      */
     public synchronized String stopRecording() {
         if (!recording.get()) {
-            throw new IllegalStateException("No active recording. The recording may have already stopped or the server was restarted.");
+            throw new IllegalStateException(
+                recorderReady.get() ? "Recording already stopped." :
+                "Recording still initializing. Wait a few seconds and try again.");
+        }
+        // Wait up to 8 seconds for recorder to finish initializing
+        long deadline = System.currentTimeMillis() + 8000;
+        while (!recorderReady.get() && System.currentTimeMillis() < deadline) {
+            try { Thread.sleep(500); } catch (InterruptedException e) { break; }
         }
         recording.set(false);
+        recorderReady.set(false);
         recordingStartTime.set(0);
 
         try {
