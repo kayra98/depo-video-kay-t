@@ -92,15 +92,14 @@ public class RecordingService {
      * Also extracts max resolution info for display.
      */
     private boolean isVideoCaptureDevice(String devicePath) {
-        // Step 1: List formats (fast, filters out metadata-only devices)
         try {
             ProcessBuilder pb = new ProcessBuilder(
-                    "timeout", "3", "ffmpeg", "-f", "video4linux2",
+                    "timeout", "5", "ffmpeg", "-f", "video4linux2",
                     "-list_formats", "all", "-i", devicePath
             );
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
+            boolean finished = p.waitFor(8, TimeUnit.SECONDS);
             if (!finished) {
                 p.destroyForcibly();
                 forceReleaseCamera(devicePath);
@@ -120,7 +119,6 @@ public class RecordingService {
                 resolutionCache.put(devicePath, maxRes);
             }
 
-            // Step 2: Quick capture test (filters out devices that list formats but can't capture)
             if (!canActuallyCapture(devicePath)) {
                 log.info("Device {} lists formats but cannot capture frames - excluding", devicePath);
                 return false;
@@ -134,18 +132,15 @@ public class RecordingService {
         }
     }
 
-    /**
-     * Try to actually capture one frame from the device with a hard timeout.
-     */
     private boolean canActuallyCapture(String devicePath) {
         try {
             ProcessBuilder pb = new ProcessBuilder(
-                    "timeout", "3", "ffmpeg", "-f", "video4linux2",
+                    "timeout", "10", "ffmpeg", "-f", "video4linux2",
                     "-i", devicePath, "-frames:v", "1", "-f", "null", "/dev/null"
             );
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            boolean finished = p.waitFor(5, TimeUnit.SECONDS);
+            boolean finished = p.waitFor(12, TimeUnit.SECONDS);
             if (!finished) {
                 p.destroyForcibly();
                 forceReleaseCamera(devicePath);
