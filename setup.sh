@@ -98,13 +98,61 @@ else
     echo -e "${YELLOW}video grubuna eklenmemissiniz: sudo usermod -a -G video \$USER${NC}"
 fi
 
+# ---- Systemd servisi ----
+SERVICE_FILE="/etc/systemd/system/vk.service"
+echo ""
+echo -n "Systemd servisi... "
+
+if [ -f "$SERVICE_FILE" ]; then
+    echo -e "${GREEN}zaten kurulu${NC}"
+else
+    read -p "Arka plan servisi olarak kurulsun mu? (y/N): " INSTALL_SVC
+    if [ "$INSTALL_SVC" = "y" ] || [ "$INSTALL_SVC" = "Y" ]; then
+        APP_DIR=$(pwd)
+        JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+        sudo tee "$SERVICE_FILE" > /dev/null << SVCEOF
+[Unit]
+Description=Depo Video Kayit Sistemi
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$APP_DIR
+Environment="JAVA_HOME=$JAVA_HOME"
+ExecStart=$APP_DIR/gradlew bootRun
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+        sudo systemctl daemon-reload
+        sudo systemctl enable vk
+        sudo systemctl start vk
+        echo -e "${GREEN}Servis kuruldu ve baslatildi${NC}"
+        echo ""
+        echo "  sudo systemctl status vk   # durum"
+        echo "  sudo systemctl stop vk     # durdur"
+        echo "  sudo systemctl restart vk  # yeniden baslat"
+        echo "  journalctl -u vk -f        # loglar"
+    else
+        echo -e "${YELLOW}Atlandi${NC}"
+    fi
+fi
+
 # ---- Baslat ----
 echo ""
 echo "========================================"
-echo -e "${GREEN}Kurulum tamam. Baslatiliyor...${NC}"
+echo -e "${GREEN}Kurulum tamam.${NC}"
 echo "  https://localhost:8443"
 echo "  https://\$(hostname -I | awk '{print \$1}'):8443"
 echo "========================================"
 echo ""
 
-./gradlew bootRun
+if [ "$INSTALL_SVC" = "y" ] || [ "$INSTALL_SVC" = "Y" ]; then
+    echo -e "${GREEN}Servis arka planda calisiyor.${NC}"
+    sudo systemctl status vk --no-pager 2>/dev/null || true
+else
+    ./gradlew bootRun
+fi
