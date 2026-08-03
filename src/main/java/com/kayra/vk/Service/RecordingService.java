@@ -245,21 +245,21 @@ public class RecordingService {
         int bitrate = recConfig != null && recConfig.getVideoBitrate() != null
                 ? recConfig.getVideoBitrate() : 5_000_000;
 
-        final java.util.concurrent.CountDownLatch cameraReady = new java.util.concurrent.CountDownLatch(1);
-        final java.util.concurrent.atomic.AtomicReference<String> threadError = new java.util.concurrent.atomic.AtomicReference<>();
-
         recordingThread = new Thread(() -> {
             try {
-                // Open camera
                 String camPath = getEffectiveCameraPath();
                 grabber = new FFmpegFrameGrabber(camPath);
                 grabber.setFormat("video4linux2");
                 grabber.setImageWidth(width);
                 grabber.setImageHeight(height);
                 grabber.setFrameRate(fps);
+                grabber.setOption("probesize", "32");
+                grabber.setOption("analyzeduration", "0");
                 grabber.start();
+                recording.set(true);
+                recordingStartTime.set(System.currentTimeMillis());
 
-                // Setup recorder with actual grabbed resolution
+                // Setup recorder
                 recorder = new FFmpegFrameRecorder(outputPath,
                         grabber.getImageWidth(), grabber.getImageHeight());
                 recorder.setVideoCodec(org.bytedeco.ffmpeg.global.avcodec.AV_CODEC_ID_H264);
@@ -268,22 +268,20 @@ public class RecordingService {
                 recorder.setVideoBitrate(bitrate);
                 recorder.setVideoQuality(0);
                 recorder.setPixelFormat(org.bytedeco.ffmpeg.global.avutil.AV_PIX_FMT_YUV420P);
+                recorder.setOption("preset", "ultrafast");
+                recorder.setOption("tune", "zerolatency");
                 recorder.start();
                 recorderReady.set(true);
-                recording.set(true);
-                cameraReady.countDown();
 
                 log.info("Recording started: order={}, output={}, res={}x{}",
                         orderNo, outputPath, grabber.getImageWidth(), grabber.getImageHeight());
 
-                // Capture loop
                 Frame frame;
                 while (recording.get() && (frame = grabber.grab()) != null) {
                     recorder.record(frame);
                 }
             } catch (Exception e) {
                 log.error("Recording error", e);
-                threadError.set(e.getMessage());
             } finally {
                 recording.set(false);
                 recorderReady.set(false);
@@ -291,26 +289,8 @@ public class RecordingService {
             }
         }, "recording-" + orderNo);
 
+        recording.set(true);
         recordingThread.start();
-
-        // Wait up to 10 seconds for camera + recorder to be ready
-        try {
-            if (!cameraReady.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                recording.set(false);
-                recordingThread.interrupt();
-                throw new RuntimeException("Camera initialization timed out after 10 seconds");
-            }
-        } catch (InterruptedException e) {
-            recording.set(false);
-            recordingThread.interrupt();
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while waiting for camera");
-        }
-
-        if (!recording.get()) {
-            String err = threadError.get();
-            throw new RuntimeException(err != null ? err : "Camera failed to start");
-        }
     }
 
     /**
