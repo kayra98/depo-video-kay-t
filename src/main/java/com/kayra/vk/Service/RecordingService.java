@@ -294,7 +294,7 @@ public class RecordingService {
     }
 
     /**
-     * Stop recording and return the path to the recorded file.
+     * Stop recording. Returns immediately; the file is saved asynchronously.
      */
     public synchronized String stopRecording() {
         if (!recording.get()) {
@@ -302,27 +302,14 @@ public class RecordingService {
                 recorderReady.get() ? "Recording already stopped." :
                 "Recording still initializing. Wait a few seconds and try again.");
         }
-        // Wait up to 8 seconds for recorder to finish initializing
-        long deadline = System.currentTimeMillis() + 8000;
-        while (!recorderReady.get() && System.currentTimeMillis() < deadline) {
-            try { Thread.sleep(500); } catch (InterruptedException e) { break; }
-        }
         recording.set(false);
         recorderReady.set(false);
         recordingStartTime.set(0);
 
-        try {
-            recordingThread.join(5000); // wait up to 5s for thread to finish
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-
         String filePath = currentFilePath;
-        log.info("Recording stopped: order={}, file={}", currentOrderNo, filePath);
-
-        currentOrderNo = null;
         currentFilePath = null;
 
+        log.info("Recording stop signal sent: order={}, file={}", currentOrderNo, filePath);
         return filePath;
     }
 

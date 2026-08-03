@@ -82,12 +82,16 @@ public class RecordController {
             ));
         }
         try {
-            // Get orderNo and elapsed BEFORE stopping (stopRecording clears them)
+            // Get orderNo and elapsed BEFORE stopping
             RecordingService.RecordingStatus status = recordingService.getStatus();
             String orderNo = status.orderNo();
             int elapsedSec = (int) status.elapsedSec();
 
             String filePath = recordingService.stopRecording();
+
+            // Wait briefly for thread to finish writing the file
+            Thread.sleep(500);
+
             File videoFile = new File(filePath);
             if (!videoFile.exists()) {
                 return ResponseEntity.badRequest().body(Map.of(
