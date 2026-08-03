@@ -284,9 +284,9 @@ public class RecordingService {
             } catch (Exception e) {
                 log.error("Recording error", e);
                 threadError.set(e.getMessage());
-                recording.set(false);
-                cameraReady.countDown();
             } finally {
+                recording.set(false);
+                recorderReady.set(false);
                 cleanup();
             }
         }, "recording-" + orderNo);
